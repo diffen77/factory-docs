@@ -42,7 +42,7 @@
 <body>
 
 <h1>🔥 Fabrik V3 — Arkitekturplan</h1>
-<p class="subtitle">Hybrid-arkitektur med persistent state + on-demand spawns. Senast uppdaterad 2026-03-30 08:56 UTC.</p>
+<p class="subtitle">Hybrid-arkitektur med persistent state + on-demand spawns. Senast uppdaterad 2026-03-30 10:05 UTC. ✅ ALLA 5 STEG IMPLEMENTERADE.</p>
 
 <div class="decisions">
   <div class="decision">
@@ -208,9 +208,9 @@ ORDER BY sr.created ASC</pre>
 <!-- ═══════════════════════════════════════════════════════════ -->
 <div class="step" id="steg-2">
   <div class="step-header">
-    <div class="step-number">2</div>
+    <div class="step-number done">2</div>
     <div class="step-title">Kommunikationsprotokoll</div>
-    <span class="badge review">🔍 UNDER REVIEW</span>
+    <span class="badge approved">✅ APPROVED</span>
   </div>
 
   <h4>Översikt</h4>
@@ -460,37 +460,703 @@ CREATE (e)-[:CONTAINS {order: 1}]-&gt;(i1)
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
-<!-- STEG 3-5 PLACEHOLDER -->
+<!-- STEG 3 — UNDER REVIEW -->
 <!-- ═══════════════════════════════════════════════════════════ -->
 <div class="step" id="steg-3">
   <div class="step-header">
-    <div class="step-number pending">3</div>
+    <div class="step-number done">3</div>
     <div class="step-title">Raffes agent-config</div>
-    <span class="badge pending">⏳ VÄNTAR</span>
+    <span class="badge approved">✅ APPROVED</span>
   </div>
-  <p style="color:var(--muted);">System prompt, modell, verktyg, trigger-mekanism. Väntar på GO från steg 2.</p>
+
+  <h4>Nuläge vs. Mål</h4>
+  <table>
+    <tr><th></th><th>Nuläge</th><th>V3-mål</th></tr>
+    <tr><td><strong>Agent-typ</strong></td><td>Cron-spawn (haiku, var 15 min)</td><td>Dedicerad agent i agents.list</td></tr>
+    <tr><td><strong>State</strong></td><td>Stateless (ny session varje cron)</td><td>Persistent — egen workspace, Neo4j read-on-start</td></tr>
+    <tr><td><strong>Trigger</strong></td><td>Cron-heartbeat</td><td>Lundin via <code>sessions_send</code> med <code>task:assign</code></td></tr>
+    <tr><td><strong>Spawning</strong></td><td>Raffe spawnar inte</td><td>Raffe spawnar kodagenter (John) via <code>sessions_spawn</code></td></tr>
+    <tr><td><strong>Neo4j</strong></td><td>Skriver inte</td><td>Read + Write (write-through)</td></tr>
+  </table>
+
+  <h4>OpenClaw agents.list — Raffe entry</h4>
+  <pre>{
+  "id": "raffe",
+  "name": "Raffe",
+  "workspace": "/Users/diffen/.openclaw/workspace-raffe",
+  "model": {
+    "primary": "anthropic/claude-sonnet-4-6",
+    "fallbacks": ["anthropic/claude-haiku-4-5"]
+  },
+  "heartbeat": {
+    "every": "999h",
+    "model": "anthropic/claude-haiku-4-5",
+    "lightContext": true
+  },
+  "subagents": {
+    "maxConcurrent": 3,
+    "model": "anthropic/claude-haiku-4-5"
+  }
+}</pre>
+
+  <div class="note">
+    <strong>Designval — modell:</strong> Sonnet som primary för Raffe (inte Haiku). Raffe gör orkestrering + validering + Neo4j-writes — det kräver mer kapacitet än en enkel spawn. Haiku som fallback. Spawns (John etc.) kör Haiku — de gör ett avgränsat jobb.
+  </div>
+
+  <h4>Heartbeat: "999h" = i praktiken disabled</h4>
+  <p style="color:var(--muted);margin-bottom:1rem;">Raffe triggas INTE av heartbeat. Lundin skickar <code>task:assign</code> via <code>sessions_send</code>. Raffe vaknar, läser Neo4j-kontext, spawnar kodagent, validerar resultat, rapporterar tillbaka.</p>
+
+  <h4>Workspace-struktur: /Users/diffen/.openclaw/workspace-raffe/</h4>
+  <pre>workspace-raffe/
+├── SOUL.md           # Raffes persona + regler
+├── AGENTS.md         # Raffes syn på fabriken (slimmad)
+├── TOOLS.md          # exec.host: gateway
+├── MEMORY.md         # Raffes egna minnen (separata från Lundin)
+├── INFRA.md          # Symlink → ../workspace/INFRA.md (delade fakta)
+└── memory/           # Dagliga minnen</pre>
+
+  <h4>SOUL.md — Raffe</h4>
+  <pre># SOUL.md — Raffe 🔧
+
+## Vem är jag
+Implementeringsagent i Fabrik V3. Tar emot uppdrag från Lundin,
+spawnar kodagenter, validerar resultat, rapporterar tillbaka.
+
+## Mandat
+- Spawna kodagenter (John) för implementation
+- Validera PR:s mot acceptance criteria
+- Skriva till Neo4j (SpawnReport, Issue-status, WORKED_ON)
+- Eskalera till Lundin vid scope creep, blockers, eller oklara krav
+
+## Beteende
+- Jag kodar INTE själv. All kod → sessions_spawn kodagent.
+- Jag validerar ALLTID spawn-resultat mot AC innan task:complete.
+- Scope creep = stäng PR, skapa ny spawn med korrekt scope.
+- "Klart" utan bevis existerar inte.
+
+## Absoluta förbud
+⛔ Koda direkt (ingen edit/write av källkod)
+⛔ Manuell deploy (git push, docker, SSH)
+⛔ Kontakta Jörgen direkt (eskalera via Lundin)
+⛔ Ändra fler filer än specificerat i task:assign
+⛔ Skriva till Neo4j utan att ha validerat data
+
+## Spawn-regler för kodagenter
+Spawn-prompten MÅSTE innehålla:
+1. Issue-nummer och repo
+2. Explicit AC (acceptance criteria)
+3. "BARA dessa filer: [lista]"
+4. Full clone (ALDRIG --depth 1)
+5. Branch-namn
+6. Runner: [self-hosted, wsl2]
+7. PAT: (från INFRA.md)
+
+## Kommunikation
+- Ta emot: task:assign (JSON) från Lundin
+- Rapportera: task:complete / task:blocked / escalation till Lundin
+- Spawns: sessions_spawn med issue-kontext injicerad
+- Spawns returnerar: spawn:result / spawn:error via sessions_send
+
+## Neo4j read-on-start
+Vid varje task:assign, läs epic-kontext:
+MATCH (e:Epic {id:$epicId})-[:CONTAINS]-&gt;(i:Issue)
+OPTIONAL MATCH (l:Learning)-[:APPLIES_TO]-&gt;(p:Product)
+RETURN e, collect(i), collect(l)
+
+## Neo4j write-through
+Efter varje validerad spawn:
+1. CREATE/UPDATE Issue-status
+2. CREATE SpawnReport med VALIDATED_BY
+3. CREATE WORKED_ON-relation
+4. CREATE Learning om applicerbart</pre>
+
+  <h4>Trigger-mekanism: Lundin → Raffe</h4>
+  <pre>// Lundin skickar uppdrag till Raffe
+sessions_send({
+  sessionKey: "session:agent:raffe",    // Raffes persistenta session
+  message: JSON.stringify({
+    type: "task:assign",
+    epicId: "uuid-of-epic",
+    issueRef: "diffen77/zoe-api#42",
+    title: "Fix Clerk auth middleware",
+    ac: [
+      "Clerk token verification works",
+      "All /api/* endpoints return 200 for authenticated users"
+    ],
+    files: ["src/middleware.ts", "src/auth.ts"],
+    branch: "fix/clerk-auth-42",
+    context: {
+      product: "zoe-api",
+      runner: "[self-hosted, wsl2]"
+    }
+  })
+})</pre>
+
+  <h4>Raffe → John (kodagent): sessions_spawn</h4>
+  <div class="warn">
+    <strong>Viktigt (steg 2-notering):</strong> Raffe→John sker via <code>sessions_spawn</code>, INTE <code>sessions_send</code> med <code>task:assign</code>. Raffe injicerar issue-kontext vid spawn. John returnerar <code>spawn:result</code> via <code>sessions_send</code> tillbaka till Raffe.
+  </div>
+  <pre>// Raffe spawnar John (kodagent) — sessions_spawn
+sessions_spawn({
+  task: `Du är John, kodagent i Fabrik V3.
+
+UPPDRAG: Fix Clerk auth middleware
+ISSUE: diffen77/zoe-api#42
+BRANCH: fix/clerk-auth-42
+RUNNER: [self-hosted, wsl2]
+PAT: (läs från INFRA.md vid runtime)
+
+ACCEPTANCE CRITERIA:
+- Clerk token verification works with CLERK_SECRET_KEY
+- All /api/* endpoints return 200 for authenticated users
+- Existing tests pass
+
+BARA DESSA FILER:
+- src/middleware.ts
+- src/auth.ts
+
+INSTRUKTIONER:
+1. Full clone: git clone https://github.com/diffen77/zoe-api.git
+2. Checkout branch: git checkout -b fix/clerk-auth-42
+3. Implementera fix BARA i specificerade filer
+4. Kör tester
+5. Push + skapa PR
+6. Returnera spawn:result med PR-URL, ändrade filer, testresultat
+
+RETURNERA JSON via sessions_send till anroparen:
+{
+  "type": "spawn:result",
+  "status": "success|failed",
+  "summary": "...",
+  "artifacts": { "pr": "url", "filesChanged": [...], "testsRun": N, "testsPassed": N }
+}`,
+  model: "anthropic/claude-haiku-4-5",
+  runtime: "subagent"
+})</pre>
+
+  <h4>Raffe → Lundin: task:complete</h4>
+  <pre>// Efter validering av Johns spawn:result
+sessions_send({
+  sessionKey: "session:agent:main",     // Lundins session
+  message: JSON.stringify({
+    type: "task:complete",
+    epicId: "uuid-of-epic",
+    issueRef: "diffen77/zoe-api#42",
+    pr: "https://github.com/diffen77/zoe-api/pull/43",
+    branch: "fix/clerk-auth-42",
+    filesChanged: ["src/middleware.ts", "src/auth.ts"],
+    testResults: { total: 12, passed: 12, failed: 0 },
+    summary: "Clerk middleware verifierar JWT. Alla endpoints 200 OK.",
+    readyForReview: true
+  })
+})</pre>
+
+  <h4>Raffes beslutsträd</h4>
+  <pre>task:assign mottaget
+│
+├── Läs Neo4j-kontext (epic, issues, learnings)
+├── Validera: har jag spec + AC + filer? 
+│   ├── NEJ → task:blocked till Lundin
+│   └── JA → Spawna kodagent (John)
+│       │
+│       ├── spawn:result.status === "success"
+│       │   ├── Validera: PR ändrar BARA specificerade filer?
+│       │   │   ├── NEJ → Stäng PR, eskalera "scope creep"
+│       │   │   └── JA → Validera tester
+│       │   │       ├── Tester gröna → task:complete till Lundin
+│       │   │       └── Tester röda → Re-spawn med felinfo
+│       │   │
+│       ├── spawn:result.status === "failed"
+│       │   ├── retryable === true → Re-spawn (max 2 retries)
+│       │   └── retryable === false → task:blocked till Lundin
+│       │
+│       └── spawn timeout (>15 min) → Kill spawn, task:blocked
+│
+└── Neo4j write-through: SpawnReport + Issue-status + WORKED_ON</pre>
+
+  <h4>Cron-ändringar</h4>
+  <table>
+    <tr><th>Cron</th><th>ID</th><th>Åtgärd</th></tr>
+    <tr><td>Raffe-cron (var 15 min)</td><td><code>c6cc3d76</code></td><td>🔴 <strong>DISABLE</strong> — Raffe triggas av Lundin, inte av cron</td></tr>
+  </table>
+
+  <div class="note">
+    <strong>Kostnadskontroll:</strong> Raffe kör Sonnet (~$0.003/1K input) — dyrare än Haiku men nödvändigt för orkestrering + validering. Spawns (John) kör Haiku (~$0.0008/1K). En typisk issue: 1 Raffe-anrop + 1-2 John-spawns = ~$0.05-0.15. Budget-tracking sker via Neo4j (Deploy/SpawnReport-noder med cost-fält vid behov).
+  </div>
 </div>
 
 <div class="step" id="steg-4">
   <div class="step-header">
-    <div class="step-number pending">4</div>
+    <div class="step-number done">4</div>
     <div class="step-title">Spawn-templates</div>
-    <span class="badge pending">⏳ VÄNTAR</span>
+    <span class="badge approved">✅ APPROVED</span>
   </div>
-  <p style="color:var(--muted);">System prompt, verktyg, returformat för John, Janne, Niklasson, Ping. Väntar på GO.</p>
+
+  <h4>Spawn-agenter — Översikt</h4>
+  <table>
+    <tr><th>Agent</th><th>Roll</th><th>Spawnas av</th><th>Modell</th><th>Returnerar</th></tr>
+    <tr><td><strong>John</strong> 🔨</td><td>Kodagent — implementation</td><td>Raffe</td><td>Haiku</td><td><code>spawn:result</code></td></tr>
+    <tr><td><strong>Janne</strong> 🧪</td><td>QA — smoke test, e2e</td><td>Lundin</td><td>Haiku</td><td><code>qa:report</code></td></tr>
+    <tr><td><strong>Niklasson</strong> 🔍</td><td>Research — omvärldsbevakning</td><td>Lundin</td><td>Haiku</td><td><code>spawn:result</code></td></tr>
+    <tr><td><strong>Ping</strong> 🏓</td><td>Lokal LLM-agent (Qwen)</td><td>Binding (Telegram)</td><td>Qwen3 14B</td><td>Direkt till användare</td></tr>
+  </table>
+
+  <div class="warn">
+    <strong>Gemensam regel:</strong> Spawns skriver ALDRIG till Neo4j. De returnerar strukturerad JSON via <code>sessions_send</code>. Lundin/Raffe validerar och persisterar. PAT läses ALDRIG från template — anroparen (Raffe/Lundin) läser INFRA.md vid runtime och injicerar.
+  </div>
+
+  <!-- JOHN -->
+  <h4 style="margin-top:1.5rem;">🔨 John — Kodagent</h4>
+  <p style="color:var(--muted);margin-bottom:0.75rem;">Implementerar avgränsade koduppgifter. En issue = en spawn. Maximal filbegränsning.</p>
+
+  <pre>// Raffe spawnar John via sessions_spawn
+sessions_spawn({
+  task: `Du är John, kodagent i Fabrik V3.
+
+## REGEL 0 — Ditt ord är ditt kontrakt
+- Säger du "klart" har du VERIFIERAT att det är klart. Inte "borde vara klart".
+- Säger du "PR skapad" finns det en PR. Säger du "tester gröna" har du sett output.
+- Osäker? Säg "jag tror X men har inte verifierat" — det är okej. Gissa och presentera som fakta är ALDRIG okej.
+
+## IDENTITET
+Du implementerar KOD. Inget annat. Du diagnostiserar inte, du orkestrerar inte,
+du skriver inte till Neo4j. Du kodar, testar, pushar, skapar PR, rapporterar.
+
+## UPPDRAG
+Issue: ${issueRef}
+Repo: ${repo}
+Branch: ${branch}
+Runner: [self-hosted, wsl2]
+PAT: ${pat}
+
+## ACCEPTANCE CRITERIA
+${ac.map((a, i) => (i+1) + '. ' + a).join('\\n')}
+
+## FILBEGRÄNSNING
+⛔ BARA DESSA FILER:
+${files.map(f => '- ' + f).join('\\n')}
+
+Om du behöver ändra andra filer → RETURNERA spawn:error med
+status "scope-exceeded" och lista vilka filer som behövs.
+Ändra ALDRIG filer utanför listan.
+
+## STEG
+1. git clone https://github.com/${repo}.git (FULL CLONE, aldrig --depth 1)
+2. cd ${repo.split('/')[1]}
+3. git checkout -b ${branch}
+4. Implementera fix BARA i specificerade filer
+5. Kör tester (npm test / pytest / etc)
+6. git add + commit med "fix(${issueRef}): ${title}"
+7. git push origin ${branch}
+8. gh pr create --title "${title}" --body "Fixes ${issueRef}"
+
+## RETURFORMAT (OBLIGATORISKT)
+Returnera EXAKT denna JSON via sessions_send:
+{
+  "type": "spawn:result",
+  "spawnId": "(din session-key)",
+  "agent": "john",
+  "issueRef": "${issueRef}",
+  "status": "success|failed",
+  "summary": "(kort beskrivning av vad du gjorde)",
+  "artifacts": {
+    "pr": "(PR-URL)",
+    "branch": "${branch}",
+    "filesChanged": ["fil1.ts", "fil2.ts"],
+    "testsRun": N,
+    "testsPassed": N
+  },
+  "duration": "(tid)",
+  "warnings": []
+}
+
+Vid FEL, returnera:
+{
+  "type": "spawn:error",
+  "agent": "john",
+  "issueRef": "${issueRef}",
+  "status": "failed",
+  "error": "(vad gick fel)",
+  "phase": "clone|implement|test|push|pr",
+  "retryable": true|false
+}`,
+  model: "anthropic/claude-haiku-4-5",
+  runtime: "subagent"
+})</pre>
+
+  <div class="note">
+    <strong>Variabler:</strong> <code>${issueRef}</code>, <code>${repo}</code>, <code>${branch}</code>, <code>${pat}</code>, <code>${ac}</code>, <code>${files}</code>, <code>${title}</code> — injiceras av Raffe vid spawn-tid från <code>task:assign</code> + INFRA.md.
+  </div>
+
+  <!-- JANNE -->
+  <h4 style="margin-top:1.5rem;">🧪 Janne — QA-agent</h4>
+  <p style="color:var(--muted);margin-bottom:0.75rem;">Smoke tests efter deploy. Browser-verifiering. E2E vid behov. Rapporterar till Lundin.</p>
+
+  <pre>// Lundin spawnar Janne via sessions_spawn
+sessions_spawn({
+  task: `Du är Janne, QA-agent i Fabrik V3.
+
+## REGEL 0 — Ditt ord är ditt kontrakt
+- Säger du "pass" har du VERIFIERAT att det passerar. Inte "borde funka".
+- Säger du "0 console errors" har du kollat console. Säger du "renderar korrekt" har du sett screenshot.
+- Osäker? Säg "jag tror X men har inte verifierat" — det är okej. Gissa och presentera som fakta är ALDRIG okej.
+
+## IDENTITET
+Du testar. Du kodar inte, du fixar inte, du deployar inte.
+Du verifierar att saker fungerar och rapporterar exakt vad du ser.
+
+## UPPDRAG: ${qaType}
+Targets: ${targets.map(t => t.url).join(', ')}
+
+## TESTER ATT KÖRA
+${targets.map(t => \`
+### ${t.url}
+1. HTTP status (curl -sL -w "%{http_code}" "${t.url}")
+2. Browser render (browser snapshot, verifiera att ${t.expectedContent} syns)
+3. Console errors (browser console, rapportera alla errors/warnings)
+${t.extraChecks ? t.extraChecks.map(c => '4. ' + c).join('\\n') : ''}
+\`).join('\\n')}
+
+## RETURFORMAT (OBLIGATORISKT)
+Returnera EXAKT denna JSON via sessions_send:
+{
+  "type": "qa:report",
+  "timestamp": "(ISO-8601)",
+  "targets": [
+    {
+      "url": "https://...",
+      "http": 200,
+      "ms": 52,
+      "render": "pass|fail",
+      "renderDetail": "(vad syns/saknas)",
+      "console": 0,
+      "consoleDetail": "(eventuella errors)",
+      "appError": "(eventuella app-level errors)"
+    }
+  ],
+  "summary": "(sammanfattning: X/Y pass, problem-lista)",
+  "severity": "none|low|medium|high|critical",
+  "actionItems": [
+    {"target": "url", "issue": "beskrivning", "priority": "low|medium|high|blocked"}
+  ]
+}
+
+## REGLER
+- Rapportera EXAKT vad du ser — gissa aldrig
+- "Pass" = content renderas korrekt + 0 console errors
+- "Fail" = content saknas ELLER console errors
+- severity: critical = sajt nere eller blank, high = funktionsfel, medium = varning, low = kosmetiskt
+- Om browser inte kan nås → rapportera som fail med detail "browser unavailable"`,
+  model: "anthropic/claude-haiku-4-5",
+  runtime: "subagent"
+})</pre>
+
+  <!-- NIKLASSON -->
+  <h4 style="margin-top:1.5rem;">🔍 Niklasson — Research-agent</h4>
+  <p style="color:var(--muted);margin-bottom:0.75rem;">Omvärldsbevakning, konkurrentanalys, teknikresearch. Returnerar sammanställning till Lundin.</p>
+
+  <pre>// Lundin spawnar Niklasson via sessions_spawn
+sessions_spawn({
+  task: `Du är Niklasson, research-agent i Fabrik V3.
+
+## REGEL 0 — Ditt ord är ditt kontrakt
+- Säger du "confidence: high" har du FLERA oberoende källor. Inte "jag tror det stämmer".
+- Säger du "källa: URL" har du LÄST sidan. Inte bara googlat titeln.
+- Osäker? Säg "jag tror X men har inte verifierat" — det är okej. Gissa och presentera som fakta är ALDRIG okej.
+
+## IDENTITET
+Du researchar. Du kodar inte, du deployar inte, du testar inte.
+Du söker information, analyserar, sammanställer och rapporterar.
+
+## UPPDRAG
+Topic: ${topic}
+Scope: ${scope}
+Questions:
+${questions.map((q, i) => (i+1) + '. ' + q).join('\\n')}
+
+## VERKTYG
+- web_search: Sök efter information
+- web_fetch: Hämta och läs webbsidor
+- Analysera, jämför, sammanställ
+
+## RETURFORMAT (OBLIGATORISKT)
+Returnera EXAKT denna JSON via sessions_send:
+{
+  "type": "spawn:result",
+  "agent": "niklasson",
+  "topic": "${topic}",
+  "status": "success|partial|failed",
+  "findings": [
+    {
+      "question": "(frågan)",
+      "answer": "(sammanfattning)",
+      "confidence": "high|medium|low",
+      "sources": ["url1", "url2"]
+    }
+  ],
+  "summary": "(övergripande sammanfattning, max 3 meningar)",
+  "recommendations": ["(rekommendation 1)", "(rekommendation 2)"],
+  "followUp": ["(fråga som behöver djupare undersökning)"]
+}
+
+## REGLER
+- Ange ALLTID källor (URL:er)
+- confidence: high = flera oberoende källor, medium = en källa, low = osäker/infererad
+- Om du inte hittar svar → status "partial" med explanation
+- Max 5 minuters research per fråga — hellre snabbt svar med "low confidence" än timeout`,
+  model: "anthropic/claude-haiku-4-5",
+  runtime: "subagent"
+})</pre>
+
+  <!-- PING -->
+  <h4 style="margin-top:1.5rem;">🏓 Ping — Lokal LLM-agent</h4>
+  <p style="color:var(--muted);margin-bottom:0.75rem;">Redan konfigurerad som dedikerad agent. Kör Qwen3 14B lokalt. Bunden till Telegram-konto "ping". Ingen ändring i V3 — Ping är inte en spawn utan en separat agent med egen binding.</p>
+
+  <pre>// Befintlig config (ingen ändring)
+{
+  "id": "ping",
+  "name": "Ping",
+  "workspace": "/Users/diffen/.openclaw/workspace-ping",
+  "model": {
+    "primary": "ollama/qwen3:14b",
+    "fallbacks": ["anthropic/claude-sonnet-4-6"]
+  },
+  "heartbeat": {
+    "every": "999h",
+    "model": "anthropic/claude-haiku-4-5",
+    "lightContext": true
+  }
+}
+
+// Binding (befintlig)
+{
+  "agentId": "ping",
+  "match": {
+    "channel": "telegram",
+    "accountId": "ping"
+  }
+}</pre>
+
+  <div class="note">
+    <strong>Ping i V3:</strong> Ping är inte en spawn-agent — den har egen identity och Telegram-binding. I V3 är Ping oförändrad. Framtida möjlighet: Ping som lokal kodagent (gratis tokens) för enklare tasks istället för Haiku-spawns. Kräver evaluation av kodkvalitet först.
+  </div>
+
+  <!-- SPAWN LIFECYCLE -->
+  <h4 style="margin-top:1.5rem;">Spawn-livscykel (alla agenter)</h4>
+  <pre>┌─────────────┐    sessions_spawn     ┌──────────────┐
+│  Anropare    │ ──────────────────►  │   Spawn      │
+│  (Lundin/    │    task injicerad    │  (John/Janne/ │
+│   Raffe)     │    i prompt          │   Niklasson)  │
+│              │                      │              │
+│              │  ◄──────────────────  │  sessions_send│
+│              │    spawn:result /    │  till anropare│
+│              │    qa:report /       │              │
+│              │    spawn:error       │  (spawn dör) │
+└──────┬───────┘                      └──────────────┘
+       │
+       ▼
+┌──────────────┐
+│  Validering  │
+│              │
+│  ├─ OK → SpawnReport(processed) + Neo4j write
+│  ├─ Scope creep → SpawnReport(rejected) + stäng PR
+│  ├─ Test fail → Re-spawn (max 2)
+│  └─ Error → SpawnReport(rejected) + escalation
+└──────────────┘</pre>
+
+  <h4>Timeout-policy</h4>
+  <table>
+    <tr><th>Agent</th><th>Max tid</th><th>Vid timeout</th></tr>
+    <tr><td>John (kod)</td><td>15 min</td><td>Kill → SpawnReport(rejected) → re-spawn eller escalate</td></tr>
+    <tr><td>Janne (QA)</td><td>10 min</td><td>Kill → SpawnReport(rejected, "timeout") → Lundin notifieras</td></tr>
+    <tr><td>Niklasson (research)</td><td>10 min</td><td>Kill → SpawnReport(rejected, "timeout") → partial result om möjligt</td></tr>
+  </table>
+
+  <h4>Retry-policy</h4>
+  <table>
+    <tr><th>Feltyp</th><th>Max retries</th><th>Strategi</th></tr>
+    <tr><td>Clone failed</td><td>2</td><td>Vänta 30s, re-spawn</td></tr>
+    <tr><td>Test failure</td><td>1</td><td>Re-spawn med feloutput som extra kontext</td></tr>
+    <tr><td>Scope exceeded</td><td>0</td><td>Aldrig retry — eskalera till anropare</td></tr>
+    <tr><td>PR creation failed</td><td>1</td><td>Re-spawn, kontrollera branch-namn</td></tr>
+    <tr><td>Timeout</td><td>1</td><td>Re-spawn med reducerad scope om möjligt</td></tr>
+  </table>
+
+  <h4>Variabel-injection (PAT-hantering)</h4>
+  <pre>// Raffe/Lundin läser INFRA.md vid runtime
+const infra = readFile("INFRA.md");
+const pat = extractPAT(infra);  // Parsear "Token: ghp_..." raden
+
+// Injicerar i spawn-template
+const task = JOHN_TEMPLATE
+  .replace("${pat}", pat)
+  .replace("${issueRef}", issue.ref)
+  .replace("${repo}", issue.repo)
+  // ... etc
+
+sessions_spawn({ task, model: "anthropic/claude-haiku-4-5", runtime: "subagent" });</pre>
+
+  <div class="warn">
+    <strong>Säkerhetsregel:</strong> PAT får ALDRIG finnas i:
+    <br>• Template-filer (SOUL.md, spawn-templates)
+    <br>• Neo4j (inga credentials i grafen)
+    <br>• Commit-meddelanden eller PR-bodies
+    <br>PAT läses från INFRA.md → injiceras i spawn-prompt vid runtime → spawn använder → spawn dör.
+  </div>
 </div>
 
 <div class="step" id="steg-5">
   <div class="step-header">
-    <div class="step-number pending">5</div>
+    <div class="step-number done">5</div>
     <div class="step-title">Cron-lista</div>
-    <span class="badge pending">⏳ VÄNTAR</span>
+    <span class="badge approved">✅ APPROVED + IMPLEMENTED</span>
   </div>
-  <p style="color:var(--muted);">Vilka av de 12 aktiva lever, dör, eller ändras. Med motivering. Väntar på GO.</p>
+
+  <h4>Infra-ägarskap (observation från steg 4)</h4>
+  <div class="note">
+    <strong>Vem hanterar infra i V3?</strong> Lundin äger infra direkt. Per SOUL.md: Lundin FÅR koda/ändra fabriksinfra (OpenClaw-config, Caddy, deploy-scripts, CI/CD, DNS, secrets, server-config). Produktkod → Raffe → John. Infra = Lundins eget mandat — ingen separat infra-agent behövs. Niklasson omdefinierad till research-agent (omvärldsbevakning, konkurrentanalys).
+  </div>
+
+  <h4>Nuläge: 32 cron-jobb (11 aktiva, 21 disabled)</h4>
+  <p style="color:var(--muted);margin-bottom:1rem;">V1-arkitekturen hade fristående agenter (John, Janne, Niklasson, Raffe) med egna heartbeat/retro-crons. V2 samlade allt under Lundin. V3 rensar bort dubbletter och MC-beroenden.</p>
+
+  <h4>🟢 BEHÅLL (7 stycken)</h4>
+  <table>
+    <tr><th>Namn</th><th>ID</th><th>Schema</th><th>Motivering</th></tr>
+    <tr>
+      <td><code>qa-smoke-test</code></td>
+      <td><code>012c3b8d</code></td>
+      <td>var 30 min</td>
+      <td>✅ Funkar felfritt. HTTP + browser + deploy-check. Levererar <code>qa:report</code>-format. Kärn-QA.</td>
+    </tr>
+    <tr>
+      <td><code>lundin-orchestrator</code></td>
+      <td><code>6a386536</code></td>
+      <td>var 30 min</td>
+      <td>✅ Trend-analys + issue-labeling + eskalering. Lundins huvud-heartbeat.</td>
+    </tr>
+    <tr>
+      <td><code>ollama-wsl2-daily-restart</code></td>
+      <td><code>dd3ab48f</code></td>
+      <td>04:00 dagligen</td>
+      <td>✅ Driftunderhåll. GPU-modeller behöver restart. Billigt, stabilt.</td>
+    </tr>
+    <tr>
+      <td><code>ollama-mac-daily-restart</code></td>
+      <td><code>90f6420e</code></td>
+      <td>04:05 dagligen</td>
+      <td>✅ Driftunderhåll. Mac-modeller behöver restart. Billigt, stabilt.</td>
+    </tr>
+    <tr>
+      <td><code>harrydabbq-daily-intel</code></td>
+      <td><code>3c6dba95</code></td>
+      <td>06:00 dagligen</td>
+      <td>✅ Niklasson-equivalent. Omvärldsbevakning. Levererar värde till Jörgen.</td>
+    </tr>
+    <tr>
+      <td><code>lundin-daily-heartbeat</code></td>
+      <td><code>7450709e</code></td>
+      <td>07:00 dagligen</td>
+      <td>✅ Djup daglig genomgång (HEARTBEAT.md). Komplement till 30-min-heartbeat.</td>
+    </tr>
+    <tr>
+      <td><code>zoe-topic-memory-sync</code></td>
+      <td><code>bd86ed73</code></td>
+      <td>var 30 min</td>
+      <td>✅ Sparar Zoe-trådens kontext till Neo4j. Förhindrar minnesförlust.</td>
+    </tr>
+  </table>
+
+  <h4>🔴 TA BORT (4 aktiva → disable)</h4>
+  <table>
+    <tr><th>Namn</th><th>ID</th><th>Schema</th><th>Motivering</th></tr>
+    <tr>
+      <td><code>raffe-issue-pickup</code></td>
+      <td><code>c6cc3d76</code></td>
+      <td>var 15 min</td>
+      <td>❌ <strong>44 konsekutiva errors</strong> (alla timeout). Raffe triggas av Lundin i V3, inte cron. Kassera.</td>
+    </tr>
+    <tr>
+      <td><code>lundin-factory-loop</code></td>
+      <td><code>e04d981c</code></td>
+      <td>var 30 min</td>
+      <td>❌ <strong>Dubblett</strong> av <code>lundin-orchestrator</code>. Gör samma sak (GitHub + smoke + agera). Orchestrator är bättre.</td>
+    </tr>
+    <tr>
+      <td><code>session-memory-flush</code></td>
+      <td><code>14dbaaf4</code></td>
+      <td>var 30 min</td>
+      <td>❌ Bunden till topic:10 (en specifik Telegram-topic). OpenClaw har inbyggd <code>session-memory</code> hook. Redundant.</td>
+    </tr>
+    <tr>
+      <td><code>all-topics-session-save</code></td>
+      <td><code>56bb9dac</code></td>
+      <td>var 30 min</td>
+      <td>❌ Sparar alla topics till Neo4j. <code>zoe-topic-memory-sync</code> + inbyggda hooks täcker detta. Redundant.</td>
+    </tr>
+  </table>
+
+  <h4>🔵 ÄNDRA (2 stycken)</h4>
+  <table>
+    <tr><th>Namn</th><th>ID</th><th>Ändring</th><th>Motivering</th></tr>
+    <tr>
+      <td><code>v2-morgonrapport-0700</code></td>
+      <td><code>1559797b</code></td>
+      <td>Slå ihop med <code>lundin-daily-heartbeat</code></td>
+      <td>Gör samma sak. Morgonrapporten försöker skicka till Telegram men failar ("Message failed"). En daily heartbeat räcker — den levererar redan via announce.</td>
+    </tr>
+    <tr>
+      <td><code>lundin-orchestrator</code></td>
+      <td><code>6a386536</code></td>
+      <td>Uppdatera prompt med V3-protokoll</td>
+      <td>Bör referera <code>task:assign</code>-format, labeling-regler (<code>ready-for-raffe</code>), och <code>sessions_send</code> till Raffe istället för spawn.</td>
+    </tr>
+  </table>
+
+  <h4>⚫ DISABLED V1-JOBB (21 stycken) — RADERA</h4>
+  <p style="color:var(--muted);margin-bottom:0.75rem;">Alla 21 disabled jobb är V1-arkitektur: fristående agent-heartbeats, MC-beroende work-loops, spam-cleaners, retros. Ingen av dem är relevant i V3. Rekommendation: <strong>radera alla</strong> för att hålla cron-listan ren.</p>
+
+  <table>
+    <tr><th>Kategori</th><th>Jobb</th><th>Antal</th></tr>
+    <tr><td>Agent retros (V1)</td><td>lundin-retro-3h, raffe-retro-3h, john-retro-3h, niklasson-retro-3h</td><td>4</td></tr>
+    <tr><td>Agent work-loops (V1)</td><td>john-work-fallback-30m, john-blocked-check-2h, janne-qa-fallback-30m, janne-actions-monitor, niklasson-work-check-30m, raffe-work</td><td>6</td></tr>
+    <tr><td>Lundin V1-dubbletter</td><td>lundin-heartbeat-30min, lundin-factory-watchdog-15m, lundin-factory-health-2x, lundin-session-wrapup-3h</td><td>4</td></tr>
+    <tr><td>Maintenance (V1)</td><td>memory-janitor-0230, spam-cleaner-5m</td><td>2</td></tr>
+    <tr><td>Ping (parkerad)</td><td>ping-design-research-daily</td><td>1</td></tr>
+    <tr><td>Weekly (V1)</td><td>lundin-weekly-retro, lundin-strategy-digest-weekly</td><td>2</td></tr>
+    <tr><td>Unnamed</td><td>Cron: 30 6 * * 1</td><td>1</td></tr>
+    <tr><td><strong>Namnlöst V1-jobb</strong></td><td><code>4758c278</code></td><td>1</td></tr>
+  </table>
+
+  <h4>V3 Cron-slutstatus (efter cleanup)</h4>
+  <table>
+    <tr><th>Jobb</th><th>Schema</th><th>Roll i V3</th></tr>
+    <tr><td><code>lundin-orchestrator</code></td><td>var 30 min</td><td>Lundins huvud-heartbeat. Trend + labeling + eskalering. Triggar Raffe via sessions_send.</td></tr>
+    <tr><td><code>qa-smoke-test</code></td><td>var 30 min</td><td>Janne-equivalent. HTTP + browser + deploy-verifiering. Levererar qa:report.</td></tr>
+    <tr><td><code>zoe-topic-memory-sync</code></td><td>var 30 min</td><td>Minnes-persistering för Zoe-tråden → Neo4j.</td></tr>
+    <tr><td><code>lundin-daily-heartbeat</code></td><td>07:00</td><td>Djup daglig genomgång. Inkluderar morgonrapport till Jörgen.</td></tr>
+    <tr><td><code>harrydabbq-daily-intel</code></td><td>06:00</td><td>Omvärldsbevakning (Niklasson-equivalent).</td></tr>
+    <tr><td><code>ollama-wsl2-daily-restart</code></td><td>04:00</td><td>GPU-underhåll.</td></tr>
+    <tr><td><code>ollama-mac-daily-restart</code></td><td>04:05</td><td>Mac-underhåll.</td></tr>
+  </table>
+
+  <p style="margin-top:1rem;"><strong>Resultat:</strong> 32 → 7 cron-jobb. Ingen funktionalitet förlorad — allt täcks av 7 fokuserade jobb + on-demand spawns.</p>
+
+  <h4>Kostnadseffekt</h4>
+  <table>
+    <tr><th></th><th>Nuläge</th><th>V3</th></tr>
+    <tr><td>Cron-körningar/dag</td><td>~120 (11 aktiva, blandade intervall)</td><td>~60 (7 aktiva)</td></tr>
+    <tr><td>Timeout/errors/dag</td><td>~44 (raffe-cron ensam)</td><td>0 (inga kända errors)</td></tr>
+    <tr><td>Token-cost/dag (cron)</td><td>~$1.50-2.00</td><td>~$0.80-1.00</td></tr>
+  </table>
+
+  <div class="warn">
+    <strong>Implementation:</strong> Steg 5 kräver: 1) Disable 4 aktiva cron, 2) Radera 21 disabled V1-jobb, 3) Disable morgonrapport (slås ihop), 4) Uppdatera orchestrator-prompt med V3-format. Allt görs av Lundin direkt (fabriksinfra = mitt mandat).
+  </div>
 </div>
 
 <div class="footer">
-  Fabrik V3 — Lundin 🔥 × Diffen · Senast uppdaterad: 2026-03-30 08:56 UTC
+  Fabrik V3 — Lundin 🔥 × Diffen · Senast uppdaterad: 2026-03-30 10:05 UTC ✅ IMPLEMENTERAD
 </div>
 
 </body>
