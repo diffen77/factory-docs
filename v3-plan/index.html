@@ -16,7 +16,7 @@
   .step-number.done { background: var(--green); }
   .step-number.pending { background: var(--border); color: var(--muted); }
   .step-title { font-size: 1.25rem; font-weight: 600; }
-  .badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; margin-left: auto; }
+  .badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; margin-left: auto; white-space: nowrap; }
   .badge.review { background: var(--orange); color: var(--bg); }
   .badge.pending { background: var(--border); color: var(--muted); }
   .badge.approved { background: var(--green); color: var(--bg); }
@@ -26,6 +26,7 @@
   code, pre { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; }
   pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; margin: 0.75rem 0; }
   .note { background: rgba(88,166,255,0.1); border-left: 3px solid var(--accent); padding: 0.75rem 1rem; border-radius: 0 6px 6px 0; margin: 1rem 0; font-size: 0.9rem; }
+  .warn { background: rgba(210,153,34,0.1); border-left: 3px solid var(--orange); padding: 0.75rem 1rem; border-radius: 0 6px 6px 0; margin: 1rem 0; font-size: 0.9rem; }
   .decisions { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
   .decision { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
   .decision h3 { font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--accent); }
@@ -34,12 +35,14 @@
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
   .cypher-label { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.25rem; font-weight: 600; }
+  h4 { margin: 1rem 0 0.5rem; }
+  .new-tag { background: var(--green); color: var(--bg); font-size: 0.7rem; padding: 1px 6px; border-radius: 4px; font-weight: 700; margin-left: 0.5rem; vertical-align: middle; }
 </style>
 </head>
 <body>
 
 <h1>🔥 Fabrik V3 — Arkitekturplan</h1>
-<p class="subtitle">Hybrid-arkitektur med persistent state + on-demand spawns. Genererad 2026-03-30.</p>
+<p class="subtitle">Hybrid-arkitektur med persistent state + on-demand spawns. Senast uppdaterad 2026-03-30 08:56 UTC.</p>
 
 <div class="decisions">
   <div class="decision">
@@ -64,18 +67,21 @@
   </div>
 </div>
 
-<!-- STEG 1 -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- STEG 1 — APPROVED -->
+<!-- ═══════════════════════════════════════════════════════════ -->
 <div class="step" id="steg-1">
   <div class="step-header">
-    <div class="step-number">1</div>
+    <div class="step-number done">1</div>
     <div class="step-title">Neo4j Graph-Schema</div>
-    <span class="badge review">🔍 UNDER REVIEW</span>
+    <span class="badge approved">✅ APPROVED</span>
   </div>
 
-  <h4 style="margin-bottom:0.5rem;">Nodtyper</h4>
+  <h4>Nodtyper</h4>
   <table>
     <tr><th>Nod</th><th>Syfte</th><th>Primärnyckel</th></tr>
-    <tr><td><code>Epic</code></td><td>Stort arbetspaket</td><td><code>id</code> (UUID)</td></tr>
+    <tr><td><code>Brief</code> <span class="new-tag">NY</span></td><td>Kundintag / affärsbehov — blir Epic vid GO</td><td><code>id</code> (UUID)</td></tr>
+    <tr><td><code>Epic</code></td><td>Stort arbetspaket (godkänd Brief)</td><td><code>id</code> (UUID)</td></tr>
     <tr><td><code>Issue</code></td><td>GitHub Issue, 1:1-mappning</td><td><code>repo</code> + <code>number</code></td></tr>
     <tr><td><code>Decision</code></td><td>Arkitektur-/affärsbeslut</td><td><code>id</code> (UUID)</td></tr>
     <tr><td><code>Deploy</code></td><td>Varje deploy till produktion</td><td><code>id</code> (UUID)</td></tr>
@@ -83,11 +89,14 @@
     <tr><td><code>Product</code></td><td>Repo/produkt</td><td><code>slug</code></td></tr>
     <tr><td><code>Incident</code></td><td>Driftstörning</td><td><code>id</code> (UUID)</td></tr>
     <tr><td><code>Learning</code></td><td>Lärdom som påverkar framtida beslut</td><td><code>id</code> (UUID)</td></tr>
+    <tr><td><code>SpawnReport</code> <span class="new-tag">NY</span></td><td>Strukturerad rapport från on-demand spawn</td><td><code>id</code> (UUID)</td></tr>
   </table>
 
-  <h4 style="margin:1rem 0 0.5rem;">Relationer</h4>
+  <h4>Relationer</h4>
   <table>
     <tr><th>Från</th><th>Relation</th><th>Till</th><th>Egenskaper</th></tr>
+    <tr><td>Brief</td><td><code>BECAME</code> <span class="new-tag">NY</span></td><td>Epic</td><td>approvedBy, at</td></tr>
+    <tr><td>Brief</td><td><code>FOR_PRODUCT</code> <span class="new-tag">NY</span></td><td>Product</td><td>—</td></tr>
     <tr><td>Epic</td><td><code>CONTAINS</code></td><td>Issue</td><td>order</td></tr>
     <tr><td>Issue</td><td><code>DEPENDS_ON</code></td><td>Issue</td><td>type (blocks/needs)</td></tr>
     <tr><td>Issue</td><td><code>BELONGS_TO</code></td><td>Product</td><td>—</td></tr>
@@ -97,36 +106,71 @@
     <tr><td>Deploy</td><td><code>TRIGGERED_BY</code></td><td>Issue</td><td>—</td></tr>
     <tr><td>Agent</td><td><code>WORKED_ON</code></td><td>Issue</td><td>role, at</td></tr>
     <tr><td>Agent</td><td><code>SPAWNED</code></td><td>Agent</td><td>task, at, sessionKey</td></tr>
+    <tr><td>SpawnReport</td><td><code>REPORTED_BY</code> <span class="new-tag">NY</span></td><td>Agent</td><td>—</td></tr>
+    <tr><td>SpawnReport</td><td><code>CONCERNS</code> <span class="new-tag">NY</span></td><td>Issue</td><td>—</td></tr>
+    <tr><td>SpawnReport</td><td><code>VALIDATED_BY</code> <span class="new-tag">NY</span></td><td>Agent</td><td>at, verdict</td></tr>
     <tr><td>Incident</td><td><code>AFFECTED</code></td><td>Product</td><td>duration, severity</td></tr>
     <tr><td>Incident</td><td><code>RESOLVED_BY</code></td><td>Issue</td><td>—</td></tr>
     <tr><td>Learning</td><td><code>LEARNED_FROM</code></td><td>Issue / Incident / Decision</td><td>—</td></tr>
     <tr><td>Learning</td><td><code>APPLIES_TO</code></td><td>Product</td><td>—</td></tr>
   </table>
 
-  <h4 style="margin:1rem 0 0.5rem;">Standardfält (alla noder)</h4>
+  <h4>Standardfält (alla noder)</h4>
   <pre>created:  datetime()
 updated:  datetime()
 source:   string    // "lundin", "raffe", "heartbeat", "spawn-report"
 status:   string    // nodtyp-specifikt</pre>
 
-  <h4 style="margin:1rem 0 0.5rem;">Status per nodtyp</h4>
+  <h4>Status per nodtyp</h4>
   <table>
     <tr><th>Nod</th><th>Tillåtna status</th></tr>
+    <tr><td>Brief <span class="new-tag">NY</span></td><td><code>draft</code> · <code>proposed</code> · <code>approved</code> · <code>rejected</code> · <code>parked</code></td></tr>
     <tr><td>Epic</td><td><code>planning</code> · <code>active</code> · <code>done</code> · <code>parked</code></td></tr>
     <tr><td>Issue</td><td><code>backlog</code> · <code>ready</code> · <code>in-progress</code> · <code>in-review</code> · <code>done</code> · <code>blocked</code></td></tr>
     <tr><td>Decision</td><td><code>proposed</code> · <code>approved</code> · <code>superseded</code></td></tr>
     <tr><td>Deploy</td><td><code>success</code> · <code>failure</code> · <code>rollback</code></td></tr>
     <tr><td>Incident</td><td><code>active</code> · <code>mitigated</code> · <code>resolved</code></td></tr>
+    <tr><td>SpawnReport <span class="new-tag">NY</span></td><td><code>received</code> · <code>processed</code> · <code>rejected</code></td></tr>
   </table>
 
-  <h4 style="margin:1rem 0 0.5rem;">Constraints &amp; Index</h4>
+  <h4>Constraints &amp; Index</h4>
   <pre>CREATE CONSTRAINT issue_unique FOR (i:Issue) REQUIRE (i.repo, i.number) IS UNIQUE;
 CREATE CONSTRAINT agent_unique FOR (a:Agent) REQUIRE a.name IS UNIQUE;
 CREATE CONSTRAINT product_unique FOR (p:Product) REQUIRE p.slug IS UNIQUE;
 CREATE INDEX issue_status FOR (i:Issue) ON (i.status);
-CREATE INDEX deploy_at FOR (d:Deploy) ON (d.at);</pre>
+CREATE INDEX deploy_at FOR (d:Deploy) ON (d.at);
+CREATE INDEX brief_status FOR (b:Brief) ON (b.status);
+CREATE INDEX spawnreport_status FOR (sr:SpawnReport) ON (sr.status);</pre>
 
-  <h4 style="margin:1rem 0 0.5rem;">Exempel-queries</h4>
+  <h4>Exempel-queries</h4>
+
+  <p class="cypher-label">Brief → Epic lifecycle</p>
+  <pre>// Skapa brief från kundintag
+CREATE (b:Brief {id: randomUUID(), title: "Webshop för Härryda BBQ",
+  description: "Kund vill sälja chark online", customer: "harrydabbq",
+  source: "lundin", status: "draft", created: datetime()})
+
+// Godkänn brief → skapa Epic
+MATCH (b:Brief {id: $briefId})
+SET b.status = "approved", b.updated = datetime()
+CREATE (e:Epic {id: randomUUID(), title: b.title, status: "planning",
+  source: "lundin", created: datetime()})
+CREATE (b)-[:BECAME {approvedBy: "jorgen", at: datetime()}]->(e)
+RETURN e</pre>
+
+  <p class="cypher-label">SpawnReport — ta emot + validera</p>
+  <pre>// Spawn skickar rapport → Lundin/Raffe skapar SpawnReport-nod
+CREATE (sr:SpawnReport {id: randomUUID(), status: "received",
+  summary: "PR #42 skapad, 3 filer ändrade, alla tester gröna",
+  prUrl: "https://github.com/diffen77/zoe-api/pull/42",
+  filesChanged: ["src/auth.ts","src/middleware.ts","tests/auth.test.ts"],
+  source: "john", created: datetime()})
+
+// Lundin validerar rapporten
+MATCH (sr:SpawnReport {id: $reportId})
+MATCH (a:Agent {name: "lundin"})
+SET sr.status = "processed", sr.updated = datetime()
+CREATE (sr)-[:VALIDATED_BY {at: datetime(), verdict: "approved"}]->(a)</pre>
 
   <p class="cypher-label">Vad har Raffe jobbat på senaste veckan?</p>
   <pre>MATCH (a:Agent {name:"raffe"})-[w:WORKED_ON]->(i:Issue)-[:BELONGS_TO]->(p:Product)
@@ -140,16 +184,6 @@ WHERE i.status IN ["backlog","ready","in-progress","blocked"]
 OPTIONAL MATCH (i)-[d:DEPENDS_ON]->(blocker:Issue)
 RETURN i.number, i.title, i.status, collect(blocker.number) AS blocked_by</pre>
 
-  <p class="cypher-label">Beslut som ledde till lärdomar</p>
-  <pre>MATCH (l:Learning)-[:LEARNED_FROM]->(d:Decision)-[:AFFECTS]->(p:Product)
-RETURN d.title, d.status, l.content, p.slug</pre>
-
-  <p class="cypher-label">Deploy-historik</p>
-  <pre>MATCH (d:Deploy)-[:DEPLOYS]->(p:Product {slug:"harrydabbq.se"})
-OPTIONAL MATCH (d)-[:TRIGGERED_BY]->(i:Issue)
-RETURN d.at, d.status, d.commit, i.number
-ORDER BY d.at DESC LIMIT 10</pre>
-
   <p class="cypher-label">Raffe read-on-start (epic-kontext)</p>
   <pre>MATCH (e:Epic {id:$epicId})-[:CONTAINS]->(i:Issue)-[:BELONGS_TO]->(p:Product)
 OPTIONAL MATCH (i)-[:DEPENDS_ON]->(dep:Issue)
@@ -158,32 +192,285 @@ RETURN e, collect(DISTINCT i) AS issues,
        collect(DISTINCT dep) AS dependencies,
        collect(DISTINCT l) AS learnings</pre>
 
+  <p class="cypher-label">Obehandlade spawn-rapporter</p>
+  <pre>MATCH (sr:SpawnReport {status: "received"})-[:REPORTED_BY]->(a:Agent)
+OPTIONAL MATCH (sr)-[:CONCERNS]->(i:Issue)
+RETURN sr.id, sr.summary, a.name AS reporter, i.number AS issue
+ORDER BY sr.created ASC</pre>
+
   <div class="note">
-    <strong>Designval:</strong> Spawns har ingen egen nod — de registreras via <code>Agent.SPAWNED→Agent</code> med sessionKey. Learning kopplas alltid till källa via <code>LEARNED_FROM</code>. Issue-status synkas med GitHub labels men Neo4j äger relationer och kontext.
+    <strong>Designval:</strong> <code>Brief</code> fångar kundintag innan de blir arbetspaket — status <code>approved</code> + <code>BECAME</code>-relation skapar Epic. <code>SpawnReport</code> persisterar spawns resultat med spårbar validering (vem godkände, när, verdict). Spawns skriver aldrig till Neo4j direkt — Lundin/Raffe skapar SpawnReport-noden efter mottagning.
   </div>
 </div>
 
-<!-- STEG 2 -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- STEG 2 — UNDER REVIEW -->
+<!-- ═══════════════════════════════════════════════════════════ -->
 <div class="step" id="steg-2">
   <div class="step-header">
-    <div class="step-number pending">2</div>
+    <div class="step-number">2</div>
     <div class="step-title">Kommunikationsprotokoll</div>
-    <span class="badge pending">⏳ VÄNTAR</span>
+    <span class="badge review">🔍 UNDER REVIEW</span>
   </div>
-  <p style="color:var(--muted);">sessions_send-format, JSON-schema, prefix-konventioner. Väntar på GO från steg 1.</p>
+
+  <h4>Översikt</h4>
+  <p style="color:var(--muted);margin-bottom:1rem;">All inter-agent-kommunikation sker via <code>sessions_send</code>. Varje meddelande är JSON med ett <code>type</code>-prefix som bestämmer hur mottagaren ska hantera det. Spawns returnerar alltid strukturerade rapporter — aldrig fritext.</p>
+
+  <h4>Meddelandetyper</h4>
+  <table>
+    <tr><th>type</th><th>Riktning</th><th>Syfte</th></tr>
+    <tr><td><code>task:assign</code></td><td>Lundin → Raffe</td><td>Nytt uppdrag med epic/issue-kontext</td></tr>
+    <tr><td><code>task:update</code></td><td>Raffe → Lundin</td><td>Statusuppdatering under pågående arbete</td></tr>
+    <tr><td><code>task:complete</code></td><td>Raffe → Lundin</td><td>Uppdrag klart, PR skapad</td></tr>
+    <tr><td><code>task:blocked</code></td><td>Raffe → Lundin</td><td>Blockerad, behöver beslut</td></tr>
+    <tr><td><code>spawn:result</code></td><td>Spawn → Lundin/Raffe</td><td>Slutrapport från on-demand spawn</td></tr>
+    <tr><td><code>spawn:error</code></td><td>Spawn → Lundin/Raffe</td><td>Spawn misslyckades</td></tr>
+    <tr><td><code>qa:report</code></td><td>QA-spawn → Lundin</td><td>Testresultat efter smoke/e2e</td></tr>
+    <tr><td><code>escalation</code></td><td>Raffe → Lundin</td><td>Kräver Lundins beslut eller eskalering till Jörgen</td></tr>
+  </table>
+
+  <h4>JSON-schema: task:assign</h4>
+  <pre>{
+  "type": "task:assign",
+  "epicId": "uuid-of-epic",
+  "issueRef": "diffen77/zoe-api#42",
+  "title": "Fix Clerk auth middleware",
+  "ac": [
+    "Clerk token verification works with CLERK_SECRET_KEY",
+    "All /api/* endpoints return 200 for authenticated users",
+    "Existing tests pass"
+  ],
+  "files": ["src/middleware.ts", "src/auth.ts"],
+  "branch": "fix/clerk-auth-42",
+  "context": {
+    "product": "zoe-api",
+    "runner": "[self-hosted, wsl2]",
+    "notes": "Deploy-script already has CLERK_SECRET_KEY as of 2026-03-30"
+  },
+  "priority": "high",
+  "deadline": "2026-03-30T18:00:00Z"
+}</pre>
+
+  <h4>JSON-schema: spawn:result</h4>
+  <pre>{
+  "type": "spawn:result",
+  "spawnId": "session-key-of-spawn",
+  "agent": "john",
+  "issueRef": "diffen77/zoe-api#42",
+  "status": "success",
+  "summary": "PR #43 skapad. 3 filer ändrade, alla tester gröna.",
+  "artifacts": {
+    "pr": "https://github.com/diffen77/zoe-api/pull/43",
+    "branch": "fix/clerk-auth-42",
+    "filesChanged": ["src/middleware.ts", "src/auth.ts", "tests/auth.test.ts"],
+    "testsRun": 12,
+    "testsPassed": 12
+  },
+  "duration": "4m32s",
+  "warnings": []
+}</pre>
+
+  <h4>JSON-schema: spawn:error</h4>
+  <pre>{
+  "type": "spawn:error",
+  "spawnId": "session-key-of-spawn",
+  "agent": "john",
+  "issueRef": "diffen77/zoe-api#42",
+  "status": "failed",
+  "error": "Clone failed: repository not found",
+  "phase": "setup",
+  "duration": "0m12s",
+  "retryable": true
+}</pre>
+
+  <h4>JSON-schema: qa:report</h4>
+  <pre>{
+  "type": "qa:report",
+  "target": "https://harrydabbq.se",
+  "product": "harrydabbq.se",
+  "checks": [
+    {"name": "HTTP 200", "status": "pass", "detail": "200 OK in 52ms"},
+    {"name": "Hero renders", "status": "pass", "detail": "h1 'Härryda BBQ' found"},
+    {"name": "/produkter content", "status": "fail", "detail": "Page blank, no product elements"},
+    {"name": "Console errors", "status": "pass", "detail": "0 errors"}
+  ],
+  "summary": "3/4 pass, 1 critical fail: /produkter blank page",
+  "screenshots": ["produkter-blank.png"],
+  "severity": "critical"
+}</pre>
+
+  <h4>Reellt exempel: QA Smoke Test 2026-03-30 08:52 UTC</h4>
+  <div class="note" style="font-size:0.85rem;">
+  Nedanstående är en faktisk <code>qa:report</code> från QA-cronen. Visar hur protokollet ser ut i produktion.
+  </div>
+  <pre>{
+  "type": "qa:report",
+  "timestamp": "2026-03-30T08:52:00Z",
+  "targets": [
+    {"url": "https://harrydabbq.se",       "http": 200, "ms": 63,  "render": "pass", "console": 0},
+    {"url": "https://mfe.lediff.se",        "http": 200, "ms": 56,  "render": "pass", "console": 0},
+    {"url": "https://rekopro.se",           "http": 200, "ms": 113, "render": "pass", "console": 0},
+    {"url": "https://mission.lediff.se",    "http": 200, "ms": 53,  "render": "pass", "console": 1,
+     "consoleDetail": "Mixed Content: /factory/ HTTP→HTTPS mismatch"},
+    {"url": "https://zoe.lediff.se",        "http": 200, "ms": 58,  "render": "pass", "console": 0,
+     "appError": "Dashboard: Kunde inte hämta statistik (API 401)"},
+    {"url": "https://api-zoe.lediff.se/health", "http": 200, "ms": 94, "render": "n/a", "console": 0}
+  ],
+  "summary": "6/6 HTTP 200. 1 console warning (mission mixed-content). 1 app-level error (zoe dashboard 401).",
+  "severity": "low",
+  "actionItems": [
+    {"target": "mission.lediff.se", "issue": "Mixed content on /factory route", "priority": "low"},
+    {"target": "zoe.lediff.se", "issue": "Dashboard API 401 — CLERK_SECRET_KEY missing", "priority": "blocked"}
+  ]
+}</pre>
+
+  <h4>JSON-schema: task:complete</h4>
+  <pre>{
+  "type": "task:complete",
+  "epicId": "uuid-of-epic",
+  "issueRef": "diffen77/zoe-api#42",
+  "pr": "https://github.com/diffen77/zoe-api/pull/43",
+  "branch": "fix/clerk-auth-42",
+  "filesChanged": ["src/middleware.ts", "src/auth.ts"],
+  "testResults": {"total": 12, "passed": 12, "failed": 0},
+  "summary": "Clerk middleware now verifies JWT with secret key. All endpoints return 200 for valid tokens.",
+  "readyForReview": true
+}</pre>
+
+  <h4>JSON-schema: task:blocked</h4>
+  <pre>{
+  "type": "task:blocked",
+  "issueRef": "diffen77/zoe-api#42",
+  "blocker": "CLERK_SECRET_KEY not in deploy script",
+  "blockerType": "missing-secret",
+  "triedSolutions": [
+    "Checked INFRA.md — key not listed",
+    "Checked docker inspect — env var missing"
+  ],
+  "needsFrom": "jorgen",
+  "suggestion": "Get sk_live_* from Clerk Dashboard → Projects → API Keys"
+}</pre>
+
+  <h4>JSON-schema: escalation</h4>
+  <pre>{
+  "type": "escalation",
+  "from": "raffe",
+  "severity": "high",
+  "subject": "Scope creep detected in PR #43",
+  "detail": "Kodagent ändrade 7 filer istället för specificerade 3. PR stängd.",
+  "action": "Behöver ny spawn med striktare filbegränsning",
+  "suggestion": "Re-spawn med explicit BARA: [src/middleware.ts, src/auth.ts]"
+}</pre>
+
+  <h4>Prefix-konventioner</h4>
+  <table>
+    <tr><th>Prefix</th><th>Betydelse</th><th>Mottagarens agerande</th></tr>
+    <tr><td><code>task:</code></td><td>Uppdragsrelaterat (assign/update/complete/blocked)</td><td>Uppdatera Issue-status i Neo4j + GitHub labels</td></tr>
+    <tr><td><code>spawn:</code></td><td>Spawn-livscykel (result/error)</td><td>Skapa SpawnReport-nod, validera, agera på resultat</td></tr>
+    <tr><td><code>qa:</code></td><td>Kvalitetsrapporter</td><td>Logga i Neo4j, eskalera vid critical severity</td></tr>
+    <tr><td><code>escalation</code></td><td>Kräver beslut från högre nivå</td><td>Lundin tar beslut eller eskalerar till Jörgen</td></tr>
+  </table>
+
+  <h4>Flödesexempel: Issue → Spawn → Validering</h4>
+  <pre>1. Lundin skickar task:assign till Raffe
+   └─ Raffe spawnar John (kodagent) med issue-kontext
+      └─ John jobbar, returnerar spawn:result till Raffe
+         └─ Raffe validerar:
+            ├─ OK → task:complete till Lundin + SpawnReport(processed)
+            └─ FEL → spawn:error till Lundin + SpawnReport(rejected)
+               └─ Lundin beslutar: re-spawn, eskalera, eller stäng</pre>
+
+  <h4>SpawnReport-livscykel (Neo4j-integration)</h4>
+  <p style="color:var(--muted);margin-bottom:0.75rem;">När en spawn skickar <code>spawn:result</code> eller <code>qa:report</code>, skapar mottagaren (Lundin/Raffe) en <code>SpawnReport</code>-nod i Neo4j. Hela rapporten persisteras — ingen data förloras vid compaction.</p>
+
+  <pre>// 1. QA-spawn skickar qa:report via sessions_send
+//    Lundin tar emot → skapar SpawnReport-nod
+
+CREATE (sr:SpawnReport {
+  id: randomUUID(),
+  status: "received",
+  type: "qa:report",
+  summary: "6/6 HTTP 200. 1 console warning, 1 app-level error.",
+  severity: "low",
+  payload: '{"targets":[...]}',   // Hela JSON-rapporten som string
+  source: "qa-spawn",
+  created: datetime()
+})
+
+// 2. Lundin validerar — inga kritiska fel, loggar som processed
+MATCH (sr:SpawnReport {id: $reportId})
+MATCH (validator:Agent {name: "lundin"})
+SET sr.status = "processed", sr.updated = datetime()
+CREATE (sr)-[:VALIDATED_BY {at: datetime(), verdict: "approved"}]-&gt;(validator)
+
+// 3. Om QA hittar kritisk bugg → SpawnReport kopplas till ny Issue
+MATCH (sr:SpawnReport {id: $reportId})
+MATCH (i:Issue {repo: "diffen77/harrydabbq.se", number: 201})
+CREATE (sr)-[:CONCERNS]-&gt;(i)</pre>
+
+  <h4>Brief → Epic: Reellt flöde</h4>
+  <p style="color:var(--muted);margin-bottom:0.75rem;">Exempel: Jörgen säger "Kunder ska kunna beställa chark online". Lundin skapar Brief, Jörgen ger GO, Brief blir Epic med issues.</p>
+
+  <pre>// 1. Lundin skapar Brief från kundintag
+CREATE (b:Brief {
+  id: randomUUID(),
+  title: "Online charkbeställning",
+  description: "Kunder ska kunna beställa och betala charkprodukter via harrydabbq.se",
+  customer: "harrydabbq",
+  requestedBy: "jorgen",
+  source: "lundin",
+  status: "draft",
+  created: datetime()
+})-[:FOR_PRODUCT]-&gt;(:Product {slug: "harrydabbq.se"})
+
+// 2. Lundin analyserar, lägger till spec, föreslår
+MATCH (b:Brief {id: $briefId})
+SET b.status = "proposed",
+    b.spec = "Produktkatalog + varukorg + Stripe checkout + orderbekräftelse",
+    b.estimate = "5 issues, ~2 dagar",
+    b.updated = datetime()
+
+// 3. Jörgen ger GO → Brief becomes Epic
+MATCH (b:Brief {id: $briefId})
+SET b.status = "approved", b.updated = datetime()
+CREATE (e:Epic {
+  id: randomUUID(),
+  title: b.title,
+  description: b.spec,
+  status: "planning",
+  source: "lundin",
+  created: datetime()
+})
+CREATE (b)-[:BECAME {approvedBy: "jorgen", at: datetime()}]-&gt;(e)
+
+// 4. Lundin bryter ner Epic till Issues
+MATCH (e:Epic {id: $epicId})
+CREATE (i1:Issue {repo: "diffen77/harrydabbq.se", number: 210,
+  title: "Produktkatalog-sida", status: "backlog", created: datetime()})
+CREATE (e)-[:CONTAINS {order: 1}]-&gt;(i1)
+// ... fler issues</pre>
+
+  <div class="warn">
+    <strong>Regel:</strong> Alla <code>sessions_send</code>-meddelanden MÅSTE vara parsbar JSON med <code>type</code>-fält. Fritext-meddelanden accepteras ALDRIG av mottagaren — de loggas som <code>SpawnReport(rejected)</code> med <code>verdict: "invalid-format"</code>.
+  </div>
+
+  <div class="note">
+    <strong>Designval:</strong> Protokollet är medvetet enkelt — inga ack/nack, ingen retry-logik i protokollet självt. Om ett meddelande inte kommer fram (spawn dör) hanteras det av heartbeat-cronen som upptäcker stale <code>in-progress</code>-issues. Retry-ansvaret ligger hos Lundin, inte i protokollet.
+  </div>
 </div>
 
-<!-- STEG 3 -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- STEG 3-5 PLACEHOLDER -->
+<!-- ═══════════════════════════════════════════════════════════ -->
 <div class="step" id="steg-3">
   <div class="step-header">
     <div class="step-number pending">3</div>
     <div class="step-title">Raffes agent-config</div>
     <span class="badge pending">⏳ VÄNTAR</span>
   </div>
-  <p style="color:var(--muted);">System prompt, modell, verktyg, trigger-mekanism. Väntar på GO.</p>
+  <p style="color:var(--muted);">System prompt, modell, verktyg, trigger-mekanism. Väntar på GO från steg 2.</p>
 </div>
 
-<!-- STEG 4 -->
 <div class="step" id="steg-4">
   <div class="step-header">
     <div class="step-number pending">4</div>
@@ -193,7 +480,6 @@ RETURN e, collect(DISTINCT i) AS issues,
   <p style="color:var(--muted);">System prompt, verktyg, returformat för John, Janne, Niklasson, Ping. Väntar på GO.</p>
 </div>
 
-<!-- STEG 5 -->
 <div class="step" id="steg-5">
   <div class="step-header">
     <div class="step-number pending">5</div>
@@ -204,7 +490,7 @@ RETURN e, collect(DISTINCT i) AS issues,
 </div>
 
 <div class="footer">
-  Fabrik V3 — Lundin 🔥 × Diffen · Senast uppdaterad: 2026-03-30 08:12 UTC
+  Fabrik V3 — Lundin 🔥 × Diffen · Senast uppdaterad: 2026-03-30 08:56 UTC
 </div>
 
 </body>
