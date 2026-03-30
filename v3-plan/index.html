@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fabrik V3 — Arkitekturplan</title>
+<style>
+  :root { --bg: #0d1117; --surface: #161b22; --border: #30363d; --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff; --green: #3fb950; --orange: #d29922; --red: #f85149; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem; max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  .subtitle { color: var(--muted); margin-bottom: 2rem; font-size: 0.95rem; }
+  .step { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .step-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+  .step-number { background: var(--accent); color: var(--bg); font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; flex-shrink: 0; }
+  .step-number.done { background: var(--green); }
+  .step-number.pending { background: var(--border); color: var(--muted); }
+  .step-title { font-size: 1.25rem; font-weight: 600; }
+  .badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; margin-left: auto; }
+  .badge.review { background: var(--orange); color: var(--bg); }
+  .badge.pending { background: var(--border); color: var(--muted); }
+  .badge.approved { background: var(--green); color: var(--bg); }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+  th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  code, pre { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; margin: 0.75rem 0; }
+  .note { background: rgba(88,166,255,0.1); border-left: 3px solid var(--accent); padding: 0.75rem 1rem; border-radius: 0 6px 6px 0; margin: 1rem 0; font-size: 0.9rem; }
+  .decisions { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .decision { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+  .decision h3 { font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--accent); }
+  .decision p { font-size: 0.85rem; color: var(--muted); }
+  .footer { color: var(--muted); font-size: 0.8rem; margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .cypher-label { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.25rem; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>🔥 Fabrik V3 — Arkitekturplan</h1>
+<p class="subtitle">Hybrid-arkitektur med persistent state + on-demand spawns. Genererad 2026-03-30.</p>
+
+<div class="decisions">
+  <div class="decision">
+    <h3>B1 — Hybrid-arkitektur</h3>
+    <p>Lundin + Raffe = dedicerade agenter med persistent state. John, Janne, Niklasson, Ping = on-demand spawns.</p>
+  </div>
+  <div class="decision">
+    <h3>B2 — Raffe som egen agent</h3>
+    <p>Raffe-cron disablas. Raffe blir dedicerad agent i agents.list, triggad av Lundin.</p>
+  </div>
+  <div class="decision">
+    <h3>B3 — Neo4j som delat sinne</h3>
+    <p>Write-through, read-on-start, gemensamt schema. Lundin + Raffe skriver direkt.</p>
+  </div>
+  <div class="decision">
+    <h3>B4 — Spawn-findings mönster C</h3>
+    <p>Spawns skriver ALDRIG till Neo4j. Artefakt i GitHub + rapport via sessions_send. Validering + Neo4j-write = Lundin/Raffe.</p>
+  </div>
+  <div class="decision">
+    <h3>B5 — Cron-cleanup</h3>
+    <p>Factory-loop + orchestrator slås ihop. Raffe-cron disablas. Resten utvärderas.</p>
+  </div>
+</div>
+
+<!-- STEG 1 -->
+<div class="step" id="steg-1">
+  <div class="step-header">
+    <div class="step-number">1</div>
+    <div class="step-title">Neo4j Graph-Schema</div>
+    <span class="badge review">🔍 UNDER REVIEW</span>
+  </div>
+
+  <h4 style="margin-bottom:0.5rem;">Nodtyper</h4>
+  <table>
+    <tr><th>Nod</th><th>Syfte</th><th>Primärnyckel</th></tr>
+    <tr><td><code>Epic</code></td><td>Stort arbetspaket</td><td><code>id</code> (UUID)</td></tr>
+    <tr><td><code>Issue</code></td><td>GitHub Issue, 1:1-mappning</td><td><code>repo</code> + <code>number</code></td></tr>
+    <tr><td><code>Decision</code></td><td>Arkitektur-/affärsbeslut</td><td><code>id</code> (UUID)</td></tr>
+    <tr><td><code>Deploy</code></td><td>Varje deploy till produktion</td><td><code>id</code> (UUID)</td></tr>
+    <tr><td><code>Agent</code></td><td>Persistent agent eller spawn-register</td><td><code>name</code></td></tr>
+    <tr><td><code>Product</code></td><td>Repo/produkt</td><td><code>slug</code></td></tr>
+    <tr><td><code>Incident</code></td><td>Driftstörning</td><td><code>id</code> (UUID)</td></tr>
+    <tr><td><code>Learning</code></td><td>Lärdom som påverkar framtida beslut</td><td><code>id</code> (UUID)</td></tr>
+  </table>
+
+  <h4 style="margin:1rem 0 0.5rem;">Relationer</h4>
+  <table>
+    <tr><th>Från</th><th>Relation</th><th>Till</th><th>Egenskaper</th></tr>
+    <tr><td>Epic</td><td><code>CONTAINS</code></td><td>Issue</td><td>order</td></tr>
+    <tr><td>Issue</td><td><code>DEPENDS_ON</code></td><td>Issue</td><td>type (blocks/needs)</td></tr>
+    <tr><td>Issue</td><td><code>BELONGS_TO</code></td><td>Product</td><td>—</td></tr>
+    <tr><td>Decision</td><td><code>AFFECTS</code></td><td>Product</td><td>—</td></tr>
+    <tr><td>Decision</td><td><code>MADE_BY</code></td><td>Agent</td><td>at</td></tr>
+    <tr><td>Deploy</td><td><code>DEPLOYS</code></td><td>Product</td><td>commit, runId, at</td></tr>
+    <tr><td>Deploy</td><td><code>TRIGGERED_BY</code></td><td>Issue</td><td>—</td></tr>
+    <tr><td>Agent</td><td><code>WORKED_ON</code></td><td>Issue</td><td>role, at</td></tr>
+    <tr><td>Agent</td><td><code>SPAWNED</code></td><td>Agent</td><td>task, at, sessionKey</td></tr>
+    <tr><td>Incident</td><td><code>AFFECTED</code></td><td>Product</td><td>duration, severity</td></tr>
+    <tr><td>Incident</td><td><code>RESOLVED_BY</code></td><td>Issue</td><td>—</td></tr>
+    <tr><td>Learning</td><td><code>LEARNED_FROM</code></td><td>Issue / Incident / Decision</td><td>—</td></tr>
+    <tr><td>Learning</td><td><code>APPLIES_TO</code></td><td>Product</td><td>—</td></tr>
+  </table>
+
+  <h4 style="margin:1rem 0 0.5rem;">Standardfält (alla noder)</h4>
+  <pre>created:  datetime()
+updated:  datetime()
+source:   string    // "lundin", "raffe", "heartbeat", "spawn-report"
+status:   string    // nodtyp-specifikt</pre>
+
+  <h4 style="margin:1rem 0 0.5rem;">Status per nodtyp</h4>
+  <table>
+    <tr><th>Nod</th><th>Tillåtna status</th></tr>
+    <tr><td>Epic</td><td><code>planning</code> · <code>active</code> · <code>done</code> · <code>parked</code></td></tr>
+    <tr><td>Issue</td><td><code>backlog</code> · <code>ready</code> · <code>in-progress</code> · <code>in-review</code> · <code>done</code> · <code>blocked</code></td></tr>
+    <tr><td>Decision</td><td><code>proposed</code> · <code>approved</code> · <code>superseded</code></td></tr>
+    <tr><td>Deploy</td><td><code>success</code> · <code>failure</code> · <code>rollback</code></td></tr>
+    <tr><td>Incident</td><td><code>active</code> · <code>mitigated</code> · <code>resolved</code></td></tr>
+  </table>
+
+  <h4 style="margin:1rem 0 0.5rem;">Constraints &amp; Index</h4>
+  <pre>CREATE CONSTRAINT issue_unique FOR (i:Issue) REQUIRE (i.repo, i.number) IS UNIQUE;
+CREATE CONSTRAINT agent_unique FOR (a:Agent) REQUIRE a.name IS UNIQUE;
+CREATE CONSTRAINT product_unique FOR (p:Product) REQUIRE p.slug IS UNIQUE;
+CREATE INDEX issue_status FOR (i:Issue) ON (i.status);
+CREATE INDEX deploy_at FOR (d:Deploy) ON (d.at);</pre>
+
+  <h4 style="margin:1rem 0 0.5rem;">Exempel-queries</h4>
+
+  <p class="cypher-label">Vad har Raffe jobbat på senaste veckan?</p>
+  <pre>MATCH (a:Agent {name:"raffe"})-[w:WORKED_ON]->(i:Issue)-[:BELONGS_TO]->(p:Product)
+WHERE w.at > datetime() - duration('P7D')
+RETURN p.slug, i.number, i.title, w.role, i.status
+ORDER BY w.at DESC</pre>
+
+  <p class="cypher-label">Öppna issues med beroenden</p>
+  <pre>MATCH (i:Issue)-[:BELONGS_TO]->(p:Product {slug:"zoe-api"})
+WHERE i.status IN ["backlog","ready","in-progress","blocked"]
+OPTIONAL MATCH (i)-[d:DEPENDS_ON]->(blocker:Issue)
+RETURN i.number, i.title, i.status, collect(blocker.number) AS blocked_by</pre>
+
+  <p class="cypher-label">Beslut som ledde till lärdomar</p>
+  <pre>MATCH (l:Learning)-[:LEARNED_FROM]->(d:Decision)-[:AFFECTS]->(p:Product)
+RETURN d.title, d.status, l.content, p.slug</pre>
+
+  <p class="cypher-label">Deploy-historik</p>
+  <pre>MATCH (d:Deploy)-[:DEPLOYS]->(p:Product {slug:"harrydabbq.se"})
+OPTIONAL MATCH (d)-[:TRIGGERED_BY]->(i:Issue)
+RETURN d.at, d.status, d.commit, i.number
+ORDER BY d.at DESC LIMIT 10</pre>
+
+  <p class="cypher-label">Raffe read-on-start (epic-kontext)</p>
+  <pre>MATCH (e:Epic {id:$epicId})-[:CONTAINS]->(i:Issue)-[:BELONGS_TO]->(p:Product)
+OPTIONAL MATCH (i)-[:DEPENDS_ON]->(dep:Issue)
+OPTIONAL MATCH (l:Learning)-[:APPLIES_TO]->(p)
+RETURN e, collect(DISTINCT i) AS issues,
+       collect(DISTINCT dep) AS dependencies,
+       collect(DISTINCT l) AS learnings</pre>
+
+  <div class="note">
+    <strong>Designval:</strong> Spawns har ingen egen nod — de registreras via <code>Agent.SPAWNED→Agent</code> med sessionKey. Learning kopplas alltid till källa via <code>LEARNED_FROM</code>. Issue-status synkas med GitHub labels men Neo4j äger relationer och kontext.
+  </div>
+</div>
+
+<!-- STEG 2 -->
+<div class="step" id="steg-2">
+  <div class="step-header">
+    <div class="step-number pending">2</div>
+    <div class="step-title">Kommunikationsprotokoll</div>
+    <span class="badge pending">⏳ VÄNTAR</span>
+  </div>
+  <p style="color:var(--muted);">sessions_send-format, JSON-schema, prefix-konventioner. Väntar på GO från steg 1.</p>
+</div>
+
+<!-- STEG 3 -->
+<div class="step" id="steg-3">
+  <div class="step-header">
+    <div class="step-number pending">3</div>
+    <div class="step-title">Raffes agent-config</div>
+    <span class="badge pending">⏳ VÄNTAR</span>
+  </div>
+  <p style="color:var(--muted);">System prompt, modell, verktyg, trigger-mekanism. Väntar på GO.</p>
+</div>
+
+<!-- STEG 4 -->
+<div class="step" id="steg-4">
+  <div class="step-header">
+    <div class="step-number pending">4</div>
+    <div class="step-title">Spawn-templates</div>
+    <span class="badge pending">⏳ VÄNTAR</span>
+  </div>
+  <p style="color:var(--muted);">System prompt, verktyg, returformat för John, Janne, Niklasson, Ping. Väntar på GO.</p>
+</div>
+
+<!-- STEG 5 -->
+<div class="step" id="steg-5">
+  <div class="step-header">
+    <div class="step-number pending">5</div>
+    <div class="step-title">Cron-lista</div>
+    <span class="badge pending">⏳ VÄNTAR</span>
+  </div>
+  <p style="color:var(--muted);">Vilka av de 12 aktiva lever, dör, eller ändras. Med motivering. Väntar på GO.</p>
+</div>
+
+<div class="footer">
+  Fabrik V3 — Lundin 🔥 × Diffen · Senast uppdaterad: 2026-03-30 08:12 UTC
+</div>
+
+</body>
+</html>
